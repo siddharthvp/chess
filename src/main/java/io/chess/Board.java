@@ -118,7 +118,6 @@ public class Board {
     private PgnParser pgnParser = new PgnParser(this);
 
     // true -> white, false -> black. White starts first.
-    @Getter
     private boolean moverColor = true;
 
     public void move(String notation) throws Exception {
@@ -152,10 +151,43 @@ public class Board {
         Square s2 = move.getS2();
         String moveLegalityCheckResult = checkMoveLegality(move, moverColor);
         if (moveLegalityCheckResult.equals(LEGAL)) {
-            new PieceMove(this, move).play();
+            s1.setPiece(null);
+            if (s2.isOccupied()) {
+                removePiece(s2.getPiece());
+            }
+            // En passant
+            if (piece.getType() == PieceType.PAWN && s1.getFile() != s2.getFile() && !s2.isOccupied()) {
+                Square oppPawnSquare = getSquare(s2.getFile(), s2.getRank() + (moverColor ? -1 : 1));
+                removePiece(oppPawnSquare.getPiece());
+                oppPawnSquare.setPiece(null);
+            }
+
+            s2.setPiece(piece);
+            piece.setSquare(s2);
+
+            if (piece.getType() == PieceType.KING && s1.getFile() == FILE_E && s2.getFile() == FILE_G) {
+                getPiece(moverColor, PieceType.ROOK, 1)
+                        .setSquare(getSquare(FILE_F, moverColor ? RANK_1 : RANK_8));
+            }
+            if (piece.getType() == PieceType.KING && s1.getFile() == FILE_E && s2.getFile() == FILE_C) {
+                getPiece(moverColor, PieceType.ROOK, 0)
+                        .setSquare(getSquare(FILE_D, moverColor ? RANK_1 : RANK_8));
+            }
+
+            if (move.getPromotesTo() != null) {
+                if (move.getPromotesTo() == PieceType.KING) throw new Exception("can't promote to king");
+                if (move.getPromotesTo() == PieceType.PAWN) throw new Exception("can't promote to pawn");
+                removePiece(piece);
+                Piece newPiece = new Piece(piece.isColor(), move.getPromotesTo());
+                newPiece.setMoved(true);
+                addPiece(newPiece, s2);
+            }
+
         } else {
             throw new Exception(moveLegalityCheckResult);
         }
+
+        piece.setMoved(true);
 
         // For en passant validation
         pawnDoubleMovedFile = (piece.getType() == PieceType.PAWN && Math.abs(s2.getRank() - s1.getRank()) == 2)
@@ -238,16 +270,15 @@ public class Board {
         if (move.isLegal()) return LEGAL; // was already checked
         String initialCheckResult = checkMoveLegalityInternal(move, mover);
         if (!initialCheckResult.equals(LEGAL)) return initialCheckResult;
+        Square kingSquare = getKing(mover).getSquare();
 
-        PieceMove fakeMove = new PieceMove(this, move);
-        fakeMove.play();
-        if (isKingChecked(mover, getKing(mover).getSquare())) {
-            fakeMove.revert();
-            return "king is in check";
-        } else {
-            fakeMove.revert();
-            return LEGAL;
+        // if the king moved, set it up as a fake move, to account for pawn checks that rely on target square
+        // being occupied
+        if (move.getPiece().getType() == PieceType.KING) {
+            kingSquare = move.getS2();
         }
+        if (isKingChecked(mover, kingSquare)) return "king is in check";
+        return LEGAL;
     }
 
     private String checkMoveLegalityInternal(Move move, boolean mover) {
