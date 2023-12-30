@@ -2,6 +2,7 @@ package io.chess;
 
 import lombok.Getter;
 import lombok.Setter;
+import lombok.SneakyThrows;
 
 import java.io.PrintStream;
 import java.util.Arrays;
@@ -13,20 +14,20 @@ import static io.chess.Constants.*;
 
 @Getter
 @Setter
-public class Board {
+public class Board implements Cloneable {
 
     // 1. file
     // 2. rank
-    private final Square[][] squares = new Square[8][8];
+    private Square[][] squares = new Square[8][8];
 
     // 1. Color (0 - white, 1 - black)
     // 2. Piece type (0 - pawn, 1 - rook, 2 - knight, 3 - bishop, 4 - queen, 5 - king)
     // 3. Piece index for given color and type (max 10 pieces of the same color + type)
-    private final Piece[][][] pieces = new Piece[2][6][10];
+    private Piece[][][] pieces = new Piece[2][6][10];
 
     private int pawnDoubleMovedFile = -1;
 
-    public static String LEGAL = "LEGAL";
+    public static final String LEGAL = "LEGAL";
 
     public Piece getPiece(boolean color, PieceType type, int internalIdx) {
         int colorIdx = color ? 0 : 1;
@@ -145,49 +146,53 @@ public class Board {
         }
     }
 
+    public void moveUnsafe(Move move) {
+        Piece piece = move.getPiece();
+        Square s1 = move.getS1();
+        Square s2 = move.getS2();
+
+        s1.setPiece(null);
+        if (s2.isOccupied()) {
+            removePiece(s2.getPiece());
+        }
+        // En passant
+        if (piece.getType() == PieceType.PAWN && s1.getFile() != s2.getFile() && !s2.isOccupied()) {
+            Square oppPawnSquare = getSquare(s2.getFile(), s2.getRank() + (moverColor ? -1 : 1));
+            removePiece(oppPawnSquare.getPiece());
+            oppPawnSquare.setPiece(null);
+        }
+
+        s2.setPiece(piece);
+        piece.setSquare(s2);
+
+        if (piece.getType() == PieceType.KING && s1.getFile() == FILE_E && s2.getFile() == FILE_G) {
+            getPiece(moverColor, PieceType.ROOK, 1)
+                    .setSquare(getSquare(FILE_F, moverColor ? RANK_1 : RANK_8));
+        }
+        if (piece.getType() == PieceType.KING && s1.getFile() == FILE_E && s2.getFile() == FILE_C) {
+            getPiece(moverColor, PieceType.ROOK, 0)
+                    .setSquare(getSquare(FILE_D, moverColor ? RANK_1 : RANK_8));
+        }
+
+        if (move.getPromotesTo() != null) {
+            removePiece(piece);
+            Piece newPiece = new Piece(piece.isColor(), move.getPromotesTo());
+            newPiece.setMoved(true);
+            addPiece(newPiece, s2);
+        }
+        piece.setMoved(true);
+    }
+
     public void move(Move move) throws Exception {
         Piece piece = move.getPiece();
         Square s1 = move.getS1();
         Square s2 = move.getS2();
         String moveLegalityCheckResult = checkMoveLegality(move, moverColor);
         if (moveLegalityCheckResult.equals(LEGAL)) {
-            s1.setPiece(null);
-            if (s2.isOccupied()) {
-                removePiece(s2.getPiece());
-            }
-            // En passant
-            if (piece.getType() == PieceType.PAWN && s1.getFile() != s2.getFile() && !s2.isOccupied()) {
-                Square oppPawnSquare = getSquare(s2.getFile(), s2.getRank() + (moverColor ? -1 : 1));
-                removePiece(oppPawnSquare.getPiece());
-                oppPawnSquare.setPiece(null);
-            }
-
-            s2.setPiece(piece);
-            piece.setSquare(s2);
-
-            if (piece.getType() == PieceType.KING && s1.getFile() == FILE_E && s2.getFile() == FILE_G) {
-                getPiece(moverColor, PieceType.ROOK, 1)
-                        .setSquare(getSquare(FILE_F, moverColor ? RANK_1 : RANK_8));
-            }
-            if (piece.getType() == PieceType.KING && s1.getFile() == FILE_E && s2.getFile() == FILE_C) {
-                getPiece(moverColor, PieceType.ROOK, 0)
-                        .setSquare(getSquare(FILE_D, moverColor ? RANK_1 : RANK_8));
-            }
-
-            if (move.getPromotesTo() != null) {
-                if (move.getPromotesTo() == PieceType.KING) throw new Exception("can't promote to king");
-                if (move.getPromotesTo() == PieceType.PAWN) throw new Exception("can't promote to pawn");
-                removePiece(piece);
-                Piece newPiece = new Piece(piece.isColor(), move.getPromotesTo());
-                newPiece.setMoved(true);
-                addPiece(newPiece, s2);
-            }
-
+            moveUnsafe(move);
         } else {
             throw new Exception(moveLegalityCheckResult);
         }
-
-        piece.setMoved(true);
 
         // For en passant validation
         pawnDoubleMovedFile = (piece.getType() == PieceType.PAWN && Math.abs(s2.getRank() - s1.getRank()) == 2)
@@ -270,14 +275,10 @@ public class Board {
         if (move.isLegal()) return LEGAL; // was already checked
         String initialCheckResult = checkMoveLegalityInternal(move, mover);
         if (!initialCheckResult.equals(LEGAL)) return initialCheckResult;
-        Square kingSquare = getKing(mover).getSquare();
 
-        // if the king moved, set it up as a fake move, to account for pawn checks that rely on target square
-        // being occupied
-        if (move.getPiece().getType() == PieceType.KING) {
-            kingSquare = move.getS2();
-        }
-        if (isKingChecked(mover, kingSquare)) return "king is in check";
+        Board newBoard = this.clone();
+        newBoard.moveUnsafe(move);
+        if (newBoard.isKingChecked(mover, newBoard.getKing(mover).getSquare())) return "king is in check";
         return LEGAL;
     }
 
@@ -438,6 +439,20 @@ public class Board {
         addPiece(new Piece(false, PieceType.PAWN), getSquare(5, 6));
         addPiece(new Piece(false, PieceType.PAWN), getSquare(6, 6));
         addPiece(new Piece(false, PieceType.PAWN), getSquare(7, 6));
+    }
+
+    @SneakyThrows
+    public Board clone() {
+//        Board newBoard = new Board();
+//        newBoard.squares = this.squares;
+//        newBoard.pieces = this.pieces;
+//        newBoard.pawnDoubleMovedFile = this.pawnDoubleMovedFile;
+//        return newBoard;
+         return (Board) super.clone();
+    }
+
+    public void visualize() {
+        visualize(System.out);
     }
 
 
