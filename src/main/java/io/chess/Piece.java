@@ -5,7 +5,7 @@ import lombok.Setter;
 
 @Getter
 @Setter
-public class Piece implements Cloneable {
+public class Piece {
     private boolean captured = false;
     private boolean moved = false;
     private Square square;
@@ -73,14 +73,4 @@ public class Piece implements Cloneable {
                 (internalIdx > 0 ? (" (" + internalIdx + ")") : "");
     }
 
-    @Override
-    public Piece clone() {
-        try {
-            Piece clone = (Piece) super.clone();
-            // TODO: copy mutable state here, so the clone can't change the internals of the original
-            return clone;
-        } catch (CloneNotSupportedException e) {
-            throw new AssertionError();
-        }
-    }
 }
