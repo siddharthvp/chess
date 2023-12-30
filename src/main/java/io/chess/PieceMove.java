@@ -24,22 +24,6 @@ public class PieceMove {
         this.s2 = move.getS2();
     }
 
-    public void revert() {
-        s1.setPiece(piece);
-        if (capturedPiece != null) {
-            board.addPiece(capturedPiece, s2);
-        } else {
-            s2.setPiece(null);
-        }
-        // XXX: en passant
-        piece.setSquare(s1);
-        if (move.getPromotesTo() != null) {
-            board.addPiece(piece, s1);
-            board.removePiece(promotedPiece);
-        }
-        piece.setMoved(pieceMovedState);
-    }
-
     public void play() {
         s1.setPiece(null);
         if (s2.isOccupied()) {
@@ -49,6 +33,7 @@ public class PieceMove {
         // En passant
         if (piece.getType() == PieceType.PAWN && s1.getFile() != s2.getFile() && !s2.isOccupied()) {
             Square oppPawnSquare = board.getSquare(s2.getFile(), s2.getRank() + (board.isMoverColor() ? -1 : 1));
+            capturedPiece = oppPawnSquare.getPiece();
             board.removePiece(oppPawnSquare.getPiece());
             oppPawnSquare.setPiece(null);
         }
@@ -56,12 +41,18 @@ public class PieceMove {
         s2.setPiece(piece);
         piece.setSquare(s2);
         if (piece.getType() == PieceType.KING && s1.getFile() == FILE_E && s2.getFile() == FILE_G) {
-            board.getPiece(board.isMoverColor(), PieceType.ROOK, 1)
-                    .setSquare(board.getSquare(FILE_F, board.isMoverColor() ? RANK_1 : RANK_8));
+            Piece rook = board.getPiece(board.isMoverColor(), PieceType.ROOK, 1);
+            rook.getSquare().setPiece(null);
+            Square newRookSquare = board.getSquare(FILE_F, board.isMoverColor() ? RANK_1 : RANK_8);
+            rook.setSquare(newRookSquare);
+            newRookSquare.setPiece(rook);
         }
         if (piece.getType() == PieceType.KING && s1.getFile() == FILE_E && s2.getFile() == FILE_C) {
-            board.getPiece(board.isMoverColor(), PieceType.ROOK, 0)
-                    .setSquare(board.getSquare(FILE_D, board.isMoverColor() ? RANK_1 : RANK_8));
+            Piece rook = board.getPiece(board.isMoverColor(), PieceType.ROOK, 0);
+            rook.getSquare().setPiece(null);
+            Square newRookSquare = board.getSquare(FILE_D, board.isMoverColor() ? RANK_1 : RANK_8);
+            rook.setSquare(newRookSquare);
+            newRookSquare.setPiece(rook);
         }
 
         if (move.getPromotesTo() != null) {
@@ -74,6 +65,56 @@ public class PieceMove {
 
         pieceMovedState = piece.isMoved();
         piece.setMoved(true);
+    }
+
+    public void revert() {
+        s1.setPiece(piece);
+        if (capturedPiece != null) {
+            undoRemoval(capturedPiece, s2);
+        }
+        s2.setPiece(capturedPiece); // could be null
+
+        // but if it was en passant capture
+        if (piece.getType() == PieceType.PAWN && s1.getFile() != s2.getFile() && !s2.isOccupied()) {
+            s2.setPiece(null); // captured piece is not on s2, in case of en passant
+            // fix square as well
+            Square oppPawnSquare = board.getSquare(s2.getFile(), s2.getRank() + (board.isMoverColor() ? -1 : 1));
+            capturedPiece.setSquare(oppPawnSquare);
+        }
+
+        piece.setSquare(s1);
+
+        if (piece.getType() == PieceType.KING && s1.getFile() == FILE_E && s2.getFile() == FILE_G) {
+            Piece rook = board.getPiece(board.isMoverColor(), PieceType.ROOK, 1);
+            rook.getSquare().setPiece(null);
+            Square rookSquare = board.getSquare(FILE_H, board.isMoverColor() ? RANK_1 : RANK_8);
+            rook.setSquare(rookSquare);
+            rookSquare.setPiece(rook);
+        }
+        if (piece.getType() == PieceType.KING && s1.getFile() == FILE_E && s2.getFile() == FILE_C) {
+            Piece rook = board.getPiece(board.isMoverColor(), PieceType.ROOK, 0);
+            rook.getSquare().setPiece(null);
+            Square rookSquare = board.getSquare(FILE_A, board.isMoverColor() ? RANK_1 : RANK_8);
+            rook.setSquare(rookSquare);
+            rookSquare.setPiece(rook);
+        }
+
+        if (move.getPromotesTo() != null) {
+            undoRemoval(piece, s1);
+
+            // Revert board.addPiece()
+            int colorIdx = promotedPiece.isColor() ? 0 : 1;
+            int typeIdx = Piece.typeToIdx(promotedPiece.getType());
+            int internalIdx = promotedPiece.getInternalIdx();
+            board.getPieces()[colorIdx][typeIdx][internalIdx] = null;
+        }
+        piece.setMoved(pieceMovedState);
+    }
+
+    public void undoRemoval(Piece piece, Square sq) {
+        // Reverse board.removePiece()
+        piece.setCaptured(false);
+        piece.setSquare(sq);
     }
 
 }

@@ -10,7 +10,7 @@ public class App {
             String move = in.nextLine();
             try {
                 board.move(move);
-                board.visualize(System.out);
+                System.out.println(board.visualize());
             } catch (Exception e) {
                 System.out.println("Failed to move " + move);
                 e.printStackTrace(System.out);

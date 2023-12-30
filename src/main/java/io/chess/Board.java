@@ -3,7 +3,6 @@ package io.chess;
 import lombok.Getter;
 import lombok.Setter;
 
-import java.io.PrintStream;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -26,7 +25,7 @@ public class Board {
 
     private int pawnDoubleMovedFile = -1;
 
-    public static String LEGAL = "LEGAL";
+    public static final String LEGAL = "LEGAL";
 
     public Piece getPiece(boolean color, PieceType type, int internalIdx) {
         int colorIdx = color ? 0 : 1;
@@ -39,6 +38,13 @@ public class Board {
         int typeIdx = Piece.typeToIdx(type);
         Piece[] candidates = pieces[colorIdx][typeIdx];
 
+        // optimisation: diagonal pawn moves always use disambiguator, so lack of disambiguator implies straight move
+        // (no perf improvement seen for a 136-move game, though)
+        if (type == PieceType.PAWN && startFrom.isEmpty()) {
+            startFrom = "" + (char)('a' + s2.getFile());
+        }
+
+        String finalStartFrom = startFrom;
         List<Piece> candidatePieces = Arrays.stream(candidates)
                 // filter out non-existent pieces
                 .map(Optional::ofNullable)
@@ -50,11 +56,11 @@ public class Board {
 
                 // filter out pieces not on specified start rank or file
                 .filter(p -> {
-                    switch (startFrom.length()) {
+                    switch (finalStartFrom.length()) {
                         case 0:
                             return true;
                         case 1:
-                            char start = startFrom.charAt(0);
+                            char start = finalStartFrom.charAt(0);
                             if (start >= 'a' && start <= 'h') { // it's a file
                                 int startFile = start - 'a';
                                 return p.getSquare().getFile() == startFile;
@@ -63,9 +69,9 @@ public class Board {
                                 return p.getSquare().getRank() == startRank;
                             }
                         case 2:
-                            return p.getSquare() == getSquare(startFrom);
+                            return p.getSquare() == getSquare(finalStartFrom);
                         default:
-                            throw new RuntimeException("Unexpected startFrom: " + startFrom);
+                            throw new RuntimeException("Unexpected startFrom: " + finalStartFrom);
                     }
                 })
                 .collect(Collectors.toList());
@@ -122,7 +128,7 @@ public class Board {
     private boolean moverColor = true;
 
     public void move(String notation) throws Exception {
-        if (notation.contains("-")) {
+        if (notation.contains("-") && !notation.startsWith("O-O")) {
             Move move = new Move();
             String[] moveParts = notation.split("-");
             move.setS1(getSquare(moveParts[0]));
@@ -136,13 +142,25 @@ public class Board {
 
     public void playMoves(String moves) throws Exception {
         // strip move numbers
-        moves = moves.replaceAll("\\d\\.", "");
+        moves = moves.replaceAll("\\d+\\.", "");
+        // strip comments
+        moves = moves.replaceAll("\\{.*?\\}", "");
+        moves = moves.replaceAll("\\(.*?\\)", "");
+
+        // alternative castle notation
+        moves = moves.replaceAll("0-0", "O-O");
+        moves = moves.replaceAll("0-0-0", "O-O-O");
 
         String[] pgns = moves.split("\\s+");
         for (String pgn : pgns) {
-            if (pgn.isEmpty()) continue;;
-            move(pgn);
-            visualize(System.out);
+            if (pgn.isEmpty()) continue;
+            try {
+                move(pgn);
+            } catch (Exception e) {
+                System.out.println("Failing moving " + pgn);
+                throw e;
+            }
+//            System.out.println(visualize());
         }
     }
 
@@ -286,6 +304,7 @@ public class Board {
         }
         if (p.getType() == PieceType.PAWN) {
             if (movement.isStraightMove() && s2.isOccupied()) return "invalid pawn move";
+            if (movement.isStraightMove() && s1.getFile() != s2.getFile()) return "pawn can't move horizontally";
             if (movement.isDiagonalMove() && !s2.isOccupied()) {
                 if (pawnDoubleMovedFile != s2.getFile() || s2.getRank() != (moverColor ? RANK_6 : RANK_3)) {
                     return "invalid pawn move";
@@ -364,64 +383,91 @@ public class Board {
         }
 
         // Rooks
-        addPiece(new Piece(true, PieceType.ROOK), getSquare(0, 0));
-        addPiece(new Piece(true, PieceType.ROOK), getSquare(7, 0));
-        addPiece(new Piece(false, PieceType.ROOK), getSquare(7, 7));
-        addPiece(new Piece(false, PieceType.ROOK), getSquare(0, 7));
+        addPiece(new Piece(true, PieceType.ROOK), getSquare(FILE_A, RANK_1));
+        addPiece(new Piece(true, PieceType.ROOK), getSquare(FILE_H, RANK_1));
+        addPiece(new Piece(false, PieceType.ROOK), getSquare(FILE_A, RANK_8));
+        addPiece(new Piece(false, PieceType.ROOK), getSquare(FILE_H, RANK_8));
 
         // Knights
-        addPiece(new Piece(true, PieceType.KNIGHT), getSquare(1, 0));
-        addPiece(new Piece(true, PieceType.KNIGHT), getSquare(6, 0));
-        addPiece(new Piece(false, PieceType.KNIGHT), getSquare(6, 7));
-        addPiece(new Piece(false, PieceType.KNIGHT), getSquare(1, 7));
+        addPiece(new Piece(true, PieceType.KNIGHT), getSquare(FILE_B, RANK_1));
+        addPiece(new Piece(true, PieceType.KNIGHT), getSquare(FILE_G, RANK_1));
+        addPiece(new Piece(false, PieceType.KNIGHT), getSquare(FILE_G, RANK_8));
+        addPiece(new Piece(false, PieceType.KNIGHT), getSquare(FILE_B, RANK_8));
 
         // Bishops
-        addPiece(new Piece(true, PieceType.BISHOP), getSquare(2, 0));
-        addPiece(new Piece(true, PieceType.BISHOP), getSquare(5, 0));
-        addPiece(new Piece(false, PieceType.BISHOP), getSquare(5, 7));
-        addPiece(new Piece(false, PieceType.BISHOP), getSquare(2, 7));
+        addPiece(new Piece(true, PieceType.BISHOP), getSquare(FILE_C, RANK_1));
+        addPiece(new Piece(true, PieceType.BISHOP), getSquare(FILE_F, RANK_1));
+        addPiece(new Piece(false, PieceType.BISHOP), getSquare(FILE_F, RANK_8));
+        addPiece(new Piece(false, PieceType.BISHOP), getSquare(FILE_C, RANK_8));
 
         // Queens
-        addPiece(new Piece(true, PieceType.QUEEN), getSquare(3, 0));
-        addPiece(new Piece(false, PieceType.QUEEN), getSquare(3, 7));
+        addPiece(new Piece(true, PieceType.QUEEN), getSquare(FILE_D, RANK_1));
+        addPiece(new Piece(false, PieceType.QUEEN), getSquare(FILE_D, RANK_8));
 
         // Kings
-        addPiece(new Piece(true, PieceType.KING), getSquare(4, 0));
-        addPiece(new Piece(false, PieceType.KING), getSquare(4, 7));
+        addPiece(new Piece(true, PieceType.KING), getSquare(FILE_E, RANK_1));
+        addPiece(new Piece(false, PieceType.KING), getSquare(FILE_E, RANK_8));
 
         // Pawns
-        addPiece(new Piece(true, PieceType.PAWN), getSquare(0, 1));
-        addPiece(new Piece(true, PieceType.PAWN), getSquare(1, 1));
-        addPiece(new Piece(true, PieceType.PAWN), getSquare(2, 1));
-        addPiece(new Piece(true, PieceType.PAWN), getSquare(3, 1));
-        addPiece(new Piece(true, PieceType.PAWN), getSquare(4, 1));
-        addPiece(new Piece(true, PieceType.PAWN), getSquare(5, 1));
-        addPiece(new Piece(true, PieceType.PAWN), getSquare(6, 1));
-        addPiece(new Piece(true, PieceType.PAWN), getSquare(7, 1));
+        addPiece(new Piece(true, PieceType.PAWN), getSquare(FILE_A, RANK_2));
+        addPiece(new Piece(true, PieceType.PAWN), getSquare(FILE_B, RANK_2));
+        addPiece(new Piece(true, PieceType.PAWN), getSquare(FILE_C, RANK_2));
+        addPiece(new Piece(true, PieceType.PAWN), getSquare(FILE_D, RANK_2));
+        addPiece(new Piece(true, PieceType.PAWN), getSquare(FILE_E, RANK_2));
+        addPiece(new Piece(true, PieceType.PAWN), getSquare(FILE_F, RANK_2));
+        addPiece(new Piece(true, PieceType.PAWN), getSquare(FILE_G, RANK_2));
+        addPiece(new Piece(true, PieceType.PAWN), getSquare(FILE_H, RANK_2));
 
-        addPiece(new Piece(false, PieceType.PAWN), getSquare(0, 6));
-        addPiece(new Piece(false, PieceType.PAWN), getSquare(1, 6));
-        addPiece(new Piece(false, PieceType.PAWN), getSquare(2, 6));
-        addPiece(new Piece(false, PieceType.PAWN), getSquare(3, 6));
-        addPiece(new Piece(false, PieceType.PAWN), getSquare(4, 6));
-        addPiece(new Piece(false, PieceType.PAWN), getSquare(5, 6));
-        addPiece(new Piece(false, PieceType.PAWN), getSquare(6, 6));
-        addPiece(new Piece(false, PieceType.PAWN), getSquare(7, 6));
+        addPiece(new Piece(false, PieceType.PAWN), getSquare(FILE_A, RANK_7));
+        addPiece(new Piece(false, PieceType.PAWN), getSquare(FILE_B, RANK_7));
+        addPiece(new Piece(false, PieceType.PAWN), getSquare(FILE_C, RANK_7));
+        addPiece(new Piece(false, PieceType.PAWN), getSquare(FILE_D, RANK_7));
+        addPiece(new Piece(false, PieceType.PAWN), getSquare(FILE_E, RANK_7));
+        addPiece(new Piece(false, PieceType.PAWN), getSquare(FILE_F, RANK_7));
+        addPiece(new Piece(false, PieceType.PAWN), getSquare(FILE_G, RANK_7));
+        addPiece(new Piece(false, PieceType.PAWN), getSquare(FILE_H, RANK_7));
     }
 
 
-    public void visualize(PrintStream out) {
+    public String visualize() {
+        StringBuilder out = new StringBuilder();
         String rankSeparator = "\n  +" + "--+".repeat(8) + "\n";
-        out.print(rankSeparator);
+        out.append(rankSeparator);
         for (int rank = 7; rank >= 0; rank--) {
-            out.print((rank + 1) + " |");
+            out.append((rank + RANK_2)).append(" |");
             for (int file = 0; file <= 7; file++) {
                 Square sq = squares[file][rank];
-                out.printf("%s |", sq.isOccupied() ? sq.getPiece().fenString() : " ");
+                out.append(sq.isOccupied() ? sq.getPiece().fenString() : " ").append(" |");
             }
-            out.print(rankSeparator);
+            out.append(rankSeparator);
         }
-        out.println("   a  b  c  d  e  f  g  h  ");
+        out.append("   a  b  c  d  e  f  g  h  ");
+        return out.toString();
+    }
+
+    public String fen() {
+        StringBuilder str = new StringBuilder();
+        for (int rank = 7; rank >= 0; rank--) {
+            int blanks = 0;
+            for (int file = 0; file <= 7; file++) {
+                Piece piece = getSquare(file, rank).getPiece();
+                if (piece == null) {
+                    blanks++;
+                } else {
+                    if (blanks != 0) {
+                        str.append(blanks);
+                        blanks = 0;
+                    }
+                    str.append(piece.fenString());
+                }
+            }
+            if (blanks != 0) {
+                str.append(blanks);
+            }
+            str.append("/");
+        }
+        String result = str.toString();
+        return result.substring(0, result.length() - 1);
     }
 
 }
