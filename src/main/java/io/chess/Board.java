@@ -157,10 +157,10 @@ public class Board {
             try {
                 move(pgn);
             } catch (Exception e) {
-                System.out.println("Failing moving " + pgn);
+                System.out.println("Failed moving " + pgn);
                 throw e;
             }
-//            System.out.println(visualize());
+            // System.out.println(visualize());
         }
     }
 
