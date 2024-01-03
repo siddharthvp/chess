@@ -160,7 +160,7 @@ public class Board {
                 System.out.println("Failed moving " + pgn);
                 throw e;
             }
-            // System.out.println(visualize());
+             // System.out.println(Visualisers.ascii(this));
         }
     }
 
@@ -428,46 +428,8 @@ public class Board {
         addPiece(new Piece(false, PieceType.PAWN), getSquare(FILE_H, RANK_7));
     }
 
-
-    public String visualize() {
-        StringBuilder out = new StringBuilder();
-        String rankSeparator = "\n  +" + "--+".repeat(8) + "\n";
-        out.append(rankSeparator);
-        for (int rank = 7; rank >= 0; rank--) {
-            out.append((rank + RANK_2)).append(" |");
-            for (int file = 0; file <= 7; file++) {
-                Square sq = squares[file][rank];
-                out.append(sq.isOccupied() ? sq.getPiece().fenString() : " ").append(" |");
-            }
-            out.append(rankSeparator);
-        }
-        out.append("   a  b  c  d  e  f  g  h  ");
-        return out.toString();
-    }
-
     public String fen() {
-        StringBuilder str = new StringBuilder();
-        for (int rank = 7; rank >= 0; rank--) {
-            int blanks = 0;
-            for (int file = 0; file <= 7; file++) {
-                Piece piece = getSquare(file, rank).getPiece();
-                if (piece == null) {
-                    blanks++;
-                } else {
-                    if (blanks != 0) {
-                        str.append(blanks);
-                        blanks = 0;
-                    }
-                    str.append(piece.fenString());
-                }
-            }
-            if (blanks != 0) {
-                str.append(blanks);
-            }
-            str.append("/");
-        }
-        String result = str.toString();
-        return result.substring(0, result.length() - 1);
+        return Visualisers.fen(this);
     }
 
 }
