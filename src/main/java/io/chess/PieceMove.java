@@ -111,7 +111,7 @@ public class PieceMove {
         piece.setMoved(pieceMovedState);
     }
 
-    public void undoRemoval(Piece piece, Square sq) {
+    private void undoRemoval(Piece piece, Square sq) {
         // Reverse board.removePiece()
         piece.setCaptured(false);
         piece.setSquare(sq);

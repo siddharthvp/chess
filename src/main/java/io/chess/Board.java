@@ -23,7 +23,12 @@ public class Board {
     // 3. Piece index for given color and type (max 10 pieces of the same color + type)
     private final Piece[][][] pieces = new Piece[2][6][10];
 
+    // true -> white, false -> black. White starts first.
+    private boolean moverColor = true;
+
     private int pawnDoubleMovedFile = -1;
+
+    private final PgnParser pgnParser = new PgnParser(this);
 
     public static final String LEGAL = "LEGAL";
 
@@ -38,7 +43,7 @@ public class Board {
         int typeIdx = Piece.typeToIdx(type);
         Piece[] candidates = pieces[colorIdx][typeIdx];
 
-        // optimisation: diagonal pawn moves always use disambiguator, so lack of disambiguator implies straight move
+        // Optimisation: diagonal pawn moves always use disambiguator, so lack of disambiguator implies straight move
         // (no perf improvement seen for a 136-move game, though)
         if (type == PieceType.PAWN && startFrom.isEmpty()) {
             startFrom = "" + (char)('a' + s2.getFile());
@@ -120,12 +125,6 @@ public class Board {
         piece.setCaptured(true);
         piece.setSquare(null);
     }
-
-    private PgnParser pgnParser = new PgnParser(this);
-
-    // true -> white, false -> black. White starts first.
-    @Getter
-    private boolean moverColor = true;
 
     public void move(String notation) throws Exception {
         if (notation.contains("-") && !notation.startsWith("O-O")) {

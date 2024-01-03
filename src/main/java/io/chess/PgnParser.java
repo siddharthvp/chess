@@ -50,7 +50,7 @@ public class PgnParser {
 
         move.setS2(board.getSquare(s2));
         Piece piece = board.getPiece(moverColor, type, startFrom, board.getSquare(s2));
-        // move.setLegal(true); // legality already checked in getPiece()
+        move.setLegal(true); // Optimisation: legality already checked in getPiece()
         move.setPiece(piece);
         move.setS1(piece.getSquare());
 
